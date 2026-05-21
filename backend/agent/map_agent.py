@@ -290,6 +290,22 @@ class MapAgent:
                     },
                 },
             },
+            {
+                "type": "function",
+                "function": {
+                    "name": "clear_map",
+                    "description": (
+                        "Clear all markers, search results, and the route from the map. "
+                        "Use when the user says 'clear the map', 'remove all markers', "
+                        "'start fresh', 'haritayı temizle', 'temizle', 'sıfırla', etc."
+                    ),
+                    "parameters": {
+                        "type": "object",
+                        "properties": {},
+                        "required": [],
+                    },
+                },
+            },
         ]
 
     # ------------------------------------------------------------------
@@ -600,6 +616,9 @@ Learned location patterns:
                 if resolved:
                     return resolved, None
                 return {"error": f"Could not resolve location '{name}'. Try saving it as a bookmark first."}, None
+
+            elif tool_name == "clear_map":
+                return {"success": True, "message": "Map cleared"}, {"type": "clear_map"}
 
             else:
                 return {"error": f"Unknown tool: {tool_name}"}, None

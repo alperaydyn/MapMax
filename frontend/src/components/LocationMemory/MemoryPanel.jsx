@@ -19,7 +19,7 @@ function ConfidenceBar({ value }) {
   )
 }
 
-export default function MemoryPanel({ onLocationSelect, collapsed, onToggle }) {
+export default function MemoryPanel({ onLocationSelect, collapsed, onToggle, refreshKey }) {
   const { token } = useAuth()
   const [insights, setInsights] = useState([])
   const [bookmarks, setBookmarks] = useState([])
@@ -36,7 +36,8 @@ export default function MemoryPanel({ onLocationSelect, collapsed, onToggle }) {
     setLoading(false)
   }
 
-  useEffect(() => { reload() }, [token])
+  // Reload when token changes OR when parent signals new data (e.g. after agent saves a bookmark)
+  useEffect(() => { reload() }, [token, refreshKey])
 
   if (collapsed) {
     return (

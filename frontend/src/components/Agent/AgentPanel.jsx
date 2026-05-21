@@ -1,6 +1,80 @@
 import React, { useState, useRef, useEffect, useCallback } from 'react'
 import VoiceButton, { speak } from './VoiceButton'
 
+// ---------------------------------------------------------------------------
+// Markdown-like message renderer
+// ---------------------------------------------------------------------------
+
+function parseInline(text) {
+  const parts = text.split(/(\*\*[^*]+\*\*|\*[^*]+\*|`[^`]+`)/g)
+  return parts.map((part, i) => {
+    if (part.startsWith('**') && part.endsWith('**') && part.length > 4)
+      return <strong key={i} className="font-semibold">{part.slice(2, -2)}</strong>
+    if (part.startsWith('*') && part.endsWith('*') && part.length > 2)
+      return <em key={i}>{part.slice(1, -1)}</em>
+    if (part.startsWith('`') && part.endsWith('`') && part.length > 2)
+      return <code key={i} className="bg-slate-100 text-slate-700 px-1 py-0.5 rounded text-[11px] font-mono">{part.slice(1, -1)}</code>
+    return part
+  })
+}
+
+function renderContent(text) {
+  if (!text) return null
+  const lines = text.split('\n')
+  const result = []
+  let listItems = []
+  let idx = 0
+  const k = () => idx++
+
+  const flushList = () => {
+    if (!listItems.length) return
+    result.push(
+      <ul key={k()} className="space-y-1 my-1 pl-0.5">
+        {listItems.map((item, i) => (
+          <li key={i} className="flex items-start gap-2">
+            <span className="text-brand mt-0.5 text-xs leading-relaxed flex-shrink-0">•</span>
+            <span>{parseInline(item)}</span>
+          </li>
+        ))}
+      </ul>
+    )
+    listItems = []
+  }
+
+  lines.forEach(line => {
+    const trimmed = line.trim()
+    if (!trimmed) {
+      flushList()
+      if (result.length) result.push(<div key={k()} className="h-1.5" />)
+      return
+    }
+    if (/^[-*•]\s+/.test(trimmed)) {
+      listItems.push(trimmed.replace(/^[-*•]\s+/, ''))
+      return
+    }
+    if (/^\d+[.)]\s+/.test(trimmed)) {
+      listItems.push(trimmed.replace(/^\d+[.)]\s+/, ''))
+      return
+    }
+    flushList()
+    if (/^#{1,3}\s/.test(trimmed)) {
+      result.push(
+        <div key={k()} className="font-semibold text-slate-900 mt-1.5 mb-0.5">
+          {parseInline(trimmed.replace(/^#+\s/, ''))}
+        </div>
+      )
+      return
+    }
+    result.push(<div key={k()}>{parseInline(trimmed)}</div>)
+  })
+  flushList()
+  return result
+}
+
+// ---------------------------------------------------------------------------
+// Components
+// ---------------------------------------------------------------------------
+
 function ThinkingIndicator() {
   return (
     <div className="flex items-end gap-2 animate-fade-in">
@@ -26,15 +100,23 @@ function Message({ msg }) {
           ? 'bg-brand text-white rounded-br-sm ml-auto'
           : 'bg-white border border-slate-100 text-slate-800 rounded-bl-sm shadow-sm'
         }`}>
-        {msg.content}
+        {isUser ? msg.content : renderContent(msg.content)}
       </div>
     </div>
   )
 }
 
 function ActionBadge({ action }) {
-  const icons = { navigate: '🧭', show_places: '📍', update_markers: '🔖', show_insight: '💡' }
-  const labels = { navigate: 'Navigating', show_places: 'Showing places', update_markers: 'Bookmarks updated', show_insight: 'New insight' }
+  const icons = {
+    navigate: '🧭', show_places: '📍', show_places_along_route: '📍',
+    update_markers: '🔖', show_insight: '💡', clear_map: '🗑️',
+  }
+  const labels = {
+    navigate: 'Navigating', show_places: 'Showing places',
+    show_places_along_route: 'Showing places along route',
+    update_markers: 'Bookmarks updated', show_insight: 'New insight',
+    clear_map: 'Map cleared',
+  }
   return (
     <div className="flex justify-center">
       <span className="bg-slate-100 border border-slate-200 text-slate-500 text-xs px-3 py-1.5 rounded-full flex items-center gap-1.5">
@@ -47,7 +129,7 @@ function ActionBadge({ action }) {
 
 export default function AgentPanel({ socket, currentLocation, onAction, collapsed, onToggle }) {
   const [messages, setMessages] = useState([
-    { role: 'assistant', content: "Hi! I'm MapMax, your AI map assistant. You can speak or type to navigate, search places, save bookmarks, or ask anything about your surroundings." }
+    { role: 'assistant', content: "Merhaba! Ben MapMax, yapay zeka harita asistanınızım. Sesli veya yazılı olarak yol tarifi alabilir, yer arayabilir, yer işareti kaydedebilir veya çevreniz hakkında her şeyi sorabilirsiniz." }
   ])
   const [input, setInput] = useState('')
   const [thinking, setThinking] = useState(false)
@@ -81,7 +163,7 @@ export default function AgentPanel({ socket, currentLocation, onAction, collapse
           })
         }
       } else if (data.type === 'error') {
-        setMessages(prev => [...prev, { role: 'assistant', content: `Sorry, something went wrong: ${data.message}` }])
+        setMessages(prev => [...prev, { role: 'assistant', content: `Bir sorun oluştu: ${data.message}` }])
       } else if (data.type === 'thinking') {
         setThinking(true)
       }
@@ -92,7 +174,7 @@ export default function AgentPanel({ socket, currentLocation, onAction, collapse
     return (
       <button onClick={onToggle} className="glass rounded-2xl p-3 flex flex-col items-center gap-1 shadow-lg cursor-pointer hover:bg-black/5 transition-all">
         <div className="w-8 h-8 bg-gradient-to-br from-brand to-accent rounded-xl flex items-center justify-center text-sm text-white font-bold">M</div>
-        <span className="text-slate-500 text-[10px]">Assistant</span>
+        <span className="text-slate-500 text-[10px]">Asistan</span>
       </button>
     )
   }
@@ -106,14 +188,14 @@ export default function AgentPanel({ socket, currentLocation, onAction, collapse
           <div>
             <div className="text-sm font-semibold text-slate-800">MapMax</div>
             <div className={`text-[10px] font-medium ${socket?.ready ? 'text-success' : 'text-slate-400'}`}>
-              {socket?.ready ? '● Connected' : '○ Connecting...'}
+              {socket?.ready ? '● Bağlı' : '○ Bağlanıyor...'}
             </div>
           </div>
         </div>
         <div className="flex items-center gap-1">
           <button
             onClick={() => setVoiceMode(v => !v)}
-            title={voiceMode ? 'Disable voice' : 'Enable voice'}
+            title={voiceMode ? 'Sesi kapat' : 'Sesi aç'}
             className={`w-7 h-7 rounded-lg flex items-center justify-center text-sm transition-all
               ${voiceMode ? 'bg-brand/10 text-brand' : 'bg-slate-100 text-slate-400 hover:text-slate-600'}`}
           >🔊</button>
@@ -137,7 +219,7 @@ export default function AgentPanel({ socket, currentLocation, onAction, collapse
           <div className="flex-1 flex items-center gap-2 bg-slate-100 rounded-xl px-3 py-2 border border-slate-200 focus-within:border-brand/50 transition-all">
             <input
               type="text"
-              placeholder={socket?.ready ? 'Ask anything...' : 'Connecting...'}
+              placeholder={socket?.ready ? 'Bir şey sorun...' : 'Bağlanıyor...'}
               value={input}
               onChange={e => setInput(e.target.value)}
               onKeyDown={e => e.key === 'Enter' && !e.shiftKey && sendMessage(input)}

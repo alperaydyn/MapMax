@@ -1,4 +1,4 @@
-import React, { useEffect, useState, useRef, useCallback } from 'react'
+import React, { useEffect, useState, useCallback } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useAuth } from '../contexts/AuthContext'
 import { api, createAgentSocket } from '../services/api'
@@ -18,6 +18,7 @@ export default function MapApp() {
   const [socket, setSocket] = useState(null)
   const [agentCollapsed, setAgentCollapsed] = useState(false)
   const [memoryCollapsed, setMemoryCollapsed] = useState(true)
+  const [memoryRefreshKey, setMemoryRefreshKey] = useState(0)
 
   useEffect(() => {
     Promise.all([api.getInsights(token), api.getBookmarks(token)])
@@ -74,6 +75,11 @@ export default function MapApp() {
             setBookmarks(bks.bookmarks || [])
           })
           .catch(() => {})
+        setMemoryRefreshKey(k => k + 1)
+        break
+      case 'clear_map':
+        setRoute(null)
+        setPlaces([])
         break
     }
   }, [token])
@@ -86,6 +92,31 @@ export default function MapApp() {
     if (type === 'clear_route') { setRoute(null); setPlaces([]) }
   }, [])
 
+  const handleSaveRoute = useCallback(async (originName, destName) => {
+    if (!route) return
+    const saves = []
+    if (route.origin_latlng) {
+      saves.push(api.saveBookmark(token, {
+        name: originName,
+        lat: route.origin_latlng.lat,
+        lng: route.origin_latlng.lng,
+        category: 'favorite',
+      }))
+    }
+    if (route.destination_latlng) {
+      saves.push(api.saveBookmark(token, {
+        name: destName,
+        lat: route.destination_latlng.lat,
+        lng: route.destination_latlng.lng,
+        category: 'favorite',
+      }))
+    }
+    try {
+      await Promise.all(saves)
+      setMemoryRefreshKey(k => k + 1)
+    } catch {}
+  }, [token, route])
+
   return (
     <div className="w-screen h-screen flex overflow-hidden relative bg-slate-100">
       {/* Full-screen map */}
@@ -97,6 +128,7 @@ export default function MapApp() {
           insights={insights}
           bookmarks={bookmarks}
           onMapClick={handleMapClick}
+          onSaveRoute={handleSaveRoute}
         />
       </div>
 
@@ -108,13 +140,13 @@ export default function MapApp() {
             <span className="font-semibold text-slate-800 text-sm">MapMax</span>
           </div>
           <div className="h-4 w-px bg-slate-200" />
-          <span className="text-slate-500 text-sm truncate max-w-[200px]">{user?.name || 'Welcome'}</span>
+          <span className="text-slate-500 text-sm truncate max-w-[200px]">{user?.name || 'Hoş geldiniz'}</span>
           {currentLocation && (
             <>
               <div className="h-4 w-px bg-slate-200" />
               <div className="flex items-center gap-1.5">
                 <div className="w-2 h-2 bg-success rounded-full animate-pulse" />
-                <span className="text-success text-xs font-medium">Live</span>
+                <span className="text-success text-xs font-medium">Canlı</span>
               </div>
             </>
           )}
@@ -127,7 +159,7 @@ export default function MapApp() {
           className="glass rounded-2xl px-3 py-2.5 flex items-center gap-2 pointer-events-auto hover:bg-black/5 transition-all shadow-lg"
         >
           <span>🧠</span>
-          <span className="text-slate-600 text-sm hidden sm:block">Memory</span>
+          <span className="text-slate-600 text-sm hidden sm:block">Hafıza</span>
           {(insights.length + bookmarks.length) > 0 && (
             <span className="bg-brand text-white text-[10px] rounded-full px-1.5 py-0.5 leading-none">
               {insights.length + bookmarks.length}
@@ -139,7 +171,7 @@ export default function MapApp() {
           onClick={() => { logout(); navigate('/') }}
           className="glass rounded-2xl px-3 py-2.5 text-slate-500 hover:text-slate-800 text-sm pointer-events-auto transition-all shadow-lg"
         >
-          Sign out
+          Çıkış
         </button>
       </div>
 
@@ -151,7 +183,7 @@ export default function MapApp() {
             className="glass rounded-2xl p-3 flex flex-col items-center gap-1 shadow-lg cursor-pointer hover:bg-black/5 transition-all"
           >
             <div className="w-8 h-8 bg-gradient-to-br from-brand to-accent rounded-xl flex items-center justify-center text-sm text-white font-bold">M</div>
-            <span className="text-slate-500 text-[10px]">Assistant</span>
+            <span className="text-slate-500 text-[10px]">Asistan</span>
           </button>
         ) : (
           <AgentPanel
@@ -171,11 +203,12 @@ export default function MapApp() {
             onLocationSelect={handleLocationSelect}
             collapsed={false}
             onToggle={() => setMemoryCollapsed(true)}
+            refreshKey={memoryRefreshKey}
           />
         </div>
       )}
 
-      {/* Insight badges */}
+      {/* Insight badges (collapsed state) */}
       {insights.slice(0, 3).map((ins, i) => (
         <div key={ins.id} className="absolute z-10 animate-fade-in pointer-events-none"
           style={{ bottom: `${5 + i * 3.5}rem`, right: memoryCollapsed ? '1rem' : '19rem' }}>

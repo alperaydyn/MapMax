@@ -24,7 +24,10 @@ export default function MapApp() {
   // Load initial data
   useEffect(() => {
     Promise.all([api.getInsights(token), api.getBookmarks(token)])
-      .then(([ins, bks]) => { setInsights(ins); setBookmarks(bks) })
+      .then(([ins, bks]) => {
+        setInsights(ins.insights || [])
+        setBookmarks(bks.bookmarks || [])
+      })
       .catch(() => {})
   }, [token])
 
@@ -69,25 +72,28 @@ export default function MapApp() {
   const handleAgentAction = useCallback((action) => {
     switch (action.type) {
       case 'navigate':
-        setRoute(action.data.route)
+        setRoute({
+          ...action.route,
+          origin_latlng: action.origin,
+          destination_latlng: action.destination,
+        })
         setPlaces([])
         break
       case 'show_places':
-        setPlaces(action.data.places || [])
+      case 'show_places_along_route':
+        setPlaces(action.places || [])
+        if (action.route) setRoute(action.route)
+        break
+      case 'show_place_detail':
+        setPlaces(action.place ? [action.place] : [])
         break
       case 'update_markers':
-        // Reload bookmarks and insights
         Promise.all([api.getInsights(token), api.getBookmarks(token)])
-          .then(([ins, bks]) => { setInsights(ins); setBookmarks(bks) })
+          .then(([ins, bks]) => {
+            setInsights(ins.insights || [])
+            setBookmarks(bks.bookmarks || [])
+          })
           .catch(() => {})
-        break
-      case 'add_waypoint':
-        if (route && action.data.waypoint) {
-          setRoute(prev => ({
-            ...prev,
-            waypoints: [...(prev.waypoints || []), action.data.waypoint],
-          }))
-        }
         break
     }
   }, [token, route])

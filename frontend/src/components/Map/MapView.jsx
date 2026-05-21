@@ -106,11 +106,11 @@ function RouteInfo({ route }) {
           <div className="text-white font-medium">{route.distance_text}</div>
           <div className="text-white/50 text-xs">Distance</div>
         </div>
-        {route.legs?.[0]?.steps?.length > 0 && (
+        {route.steps?.length > 0 && (
           <>
             <div className="w-px h-8 bg-white/10" />
             <div className="max-w-[180px]">
-              <div className="text-white/70 text-xs truncate">{route.legs[0].steps[0].html_instructions?.replace(/<[^>]+>/g, '')}</div>
+              <div className="text-white/70 text-xs truncate">{route.steps[0].instruction?.replace(/<[^>]+>/g, '') || route.steps[0].maneuver}</div>
               <div className="text-white/40 text-[10px]">Next step</div>
             </div>
           </>
@@ -190,7 +190,7 @@ export default function MapView({ currentLocation, route, places, insights, book
 
           {/* Location insights */}
           {insights?.map((ins, i) => (
-            <AdvancedMarker key={`ins-${ins.id || i}`} position={{ lat: ins.latitude, lng: ins.longitude }} title={ins.insight_type}>
+            <AdvancedMarker key={`ins-${ins.id || i}`} position={{ lat: ins.lat, lng: ins.lng }} title={ins.insight_type}>
               <div className="flex flex-col items-center gap-0.5">
                 <div className="glass rounded-xl px-2 py-1 text-xs text-white shadow-lg border border-brand/30 flex items-center gap-1">
                   <span>{INSIGHT_ICONS[ins.insight_type] || '📍'}</span>
@@ -204,7 +204,7 @@ export default function MapView({ currentLocation, route, places, insights, book
 
           {/* Bookmarks */}
           {bookmarks?.map((bk, i) => (
-            <AdvancedMarker key={`bk-${bk.id || i}`} position={{ lat: bk.latitude, lng: bk.longitude }} title={bk.name}>
+            <AdvancedMarker key={`bk-${bk.id || i}`} position={{ lat: bk.lat, lng: bk.lng }} title={bk.name}>
               <div className="flex flex-col items-center gap-0.5">
                 <div className="glass-light rounded-xl px-2 py-1 text-xs text-white shadow-md border border-white/20 flex items-center gap-1">
                   <span>{bk.name}</span>

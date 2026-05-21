@@ -30,8 +30,8 @@ export default function MemoryPanel({ onLocationSelect, collapsed, onToggle }) {
     setLoading(true)
     try {
       const [ins, bks] = await Promise.all([api.getInsights(token), api.getBookmarks(token)])
-      setInsights(ins)
-      setBookmarks(bks)
+      setInsights(ins.insights || [])
+      setBookmarks(bks.bookmarks || [])
     } catch {}
     setLoading(false)
   }
@@ -107,7 +107,7 @@ export default function MemoryPanel({ onLocationSelect, collapsed, onToggle }) {
             insights.map(ins => (
               <button
                 key={ins.id}
-                onClick={() => onLocationSelect?.({ lat: ins.latitude, lng: ins.longitude, label: ins.place_name })}
+                onClick={() => onLocationSelect?.({ lat: ins.lat, lng: ins.lng, label: ins.place_name })}
                 className="w-full text-left glass-light rounded-xl p-3 hover:bg-white/10 transition-all group"
               >
                 <div className="flex items-start gap-2.5">
@@ -135,7 +135,7 @@ export default function MemoryPanel({ onLocationSelect, collapsed, onToggle }) {
             bookmarks.map(bk => (
               <button
                 key={bk.id}
-                onClick={() => onLocationSelect?.({ lat: bk.latitude, lng: bk.longitude, label: bk.name })}
+                onClick={() => onLocationSelect?.({ lat: bk.lat, lng: bk.lng, label: bk.name })}
                 className="w-full text-left glass-light rounded-xl p-3 hover:bg-white/10 transition-all group"
               >
                 <div className="flex items-start gap-2.5">

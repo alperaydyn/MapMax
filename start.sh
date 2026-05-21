@@ -8,10 +8,11 @@ echo "=== MapMax Startup ==="
 # Backend
 echo "[1/3] Installing backend dependencies..."
 cd "$ROOT/backend"
-pip install -r requirements.txt -q
+python3 -m venv .venv 2>/dev/null || true
+.venv/bin/pip install -r requirements.txt -q
 
 echo "[2/3] Starting backend (port 8000)..."
-uvicorn main:app --host 0.0.0.0 --port 8000 --reload &
+.venv/bin/uvicorn main:app --host 0.0.0.0 --port 8000 --reload &
 BACKEND_PID=$!
 
 # Frontend

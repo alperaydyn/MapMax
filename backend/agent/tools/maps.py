@@ -20,8 +20,11 @@ async def geocode(address: str) -> dict:
         resp.raise_for_status()
         data = resp.json()
 
-    if data.get("status") != "OK" or not data.get("results"):
-        return {"error": f"Geocode failed: {data.get('status', 'UNKNOWN')}"}
+    status = data.get("status", "UNKNOWN")
+    if status != "OK" or not data.get("results"):
+        if status == "REQUEST_DENIED":
+            return {"error": "Geocoding API not enabled for this key — enable it in Google Cloud Console"}
+        return {"error": f"Geocode failed: {data.get('error_message') or status}"}
 
     result = data["results"][0]
     loc = result["geometry"]["location"]
@@ -49,8 +52,9 @@ async def reverse_geocode(lat: float, lng: float) -> dict:
         resp.raise_for_status()
         data = resp.json()
 
-    if data.get("status") != "OK" or not data.get("results"):
-        return {"error": f"Reverse geocode failed: {data.get('status', 'UNKNOWN')}"}
+    status = data.get("status", "UNKNOWN")
+    if status != "OK" or not data.get("results"):
+        return {"error": f"Reverse geocode failed: {data.get('error_message') or status}"}
 
     result = data["results"][0]
     return {
@@ -102,8 +106,11 @@ async def get_directions(
         resp.raise_for_status()
         data = resp.json()
 
-    if data.get("status") != "OK" or not data.get("routes"):
-        return {"error": f"Directions failed: {data.get('status', 'UNKNOWN')}"}
+    status = data.get("status", "UNKNOWN")
+    if status != "OK" or not data.get("routes"):
+        if status == "REQUEST_DENIED":
+            return {"error": "Directions API not enabled for this key — enable it in Google Cloud Console"}
+        return {"error": f"Directions failed: {data.get('error_message') or status}"}
 
     route = data["routes"][0]
     legs = route.get("legs", [])

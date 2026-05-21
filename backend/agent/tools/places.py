@@ -51,9 +51,13 @@ async def search_places(
         resp.raise_for_status()
         data = resp.json()
 
-    if data.get("status") not in ("OK", "ZERO_RESULTS"):
+    status = data.get("status", "UNKNOWN")
+    if status not in ("OK", "ZERO_RESULTS"):
+        detail = data.get("error_message") or status
+        if status == "REQUEST_DENIED":
+            detail = "Places API is not enabled for this key — enable it in Google Cloud Console"
         return {
-            "error": f"Places search failed: {data.get('status', 'UNKNOWN')}",
+            "error": f"Places search failed: {detail}",
             "places": [],
             "count": 0,
         }

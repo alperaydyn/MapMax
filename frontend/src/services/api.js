@@ -20,6 +20,9 @@ export const api = {
 
   getMe: (token) => request('/auth/me', {}, token),
 
+  googleAuth: (credential) =>
+    request('/auth/google', { method: 'POST', body: JSON.stringify({ credential }) }),
+
   updateLocation: (token, lat, lng, accuracy) =>
     request('/locations/update', { method: 'POST', body: JSON.stringify({ lat, lng, accuracy }) }, token),
 

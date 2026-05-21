@@ -1,6 +1,3 @@
-"""
-Authentication router: register, login, and current-user endpoints.
-"""
 from datetime import datetime, timedelta
 from typing import Optional
 
@@ -8,20 +5,20 @@ from fastapi import APIRouter, Depends, HTTPException, status
 from fastapi.security import OAuth2PasswordBearer
 from jose import JWTError, jwt
 from passlib.context import CryptContext
-from pydantic import BaseModel, EmailStr
+from pydantic import BaseModel, EmailStr, field_validator
 from sqlalchemy.orm import Session
 
-from config import SECRET_KEY, ALGORITHM, ACCESS_TOKEN_EXPIRE_DAYS
+from config import SECRET_KEY, ALGORITHM, ACCESS_TOKEN_EXPIRE_DAYS, GOOGLE_CLIENT_ID
 from database.db import get_db
 from database.models import User
 
 router = APIRouter()
 
-# Password hashing
 pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
-
-# OAuth2 scheme – used by FastAPI for the /docs UI and Depends injection
 oauth2_scheme = OAuth2PasswordBearer(tokenUrl="/auth/login")
+
+# Sentinel stored for Google-only accounts so password login always fails
+_GOOGLE_AUTH_SENTINEL = "GOOGLE_AUTH_NO_PASSWORD"
 
 
 # ---------------------------------------------------------------------------
@@ -33,10 +30,21 @@ class RegisterRequest(BaseModel):
     name: str
     password: str
 
+    @field_validator("password")
+    @classmethod
+    def password_length(cls, v: str) -> str:
+        if len(v.encode("utf-8")) > 72:
+            raise ValueError("Password must be 72 characters or fewer")
+        return v
+
 
 class LoginRequest(BaseModel):
     email: EmailStr
     password: str
+
+
+class GoogleAuthRequest(BaseModel):
+    credential: str  # Google ID token
 
 
 class UserOut(BaseModel):
@@ -60,7 +68,6 @@ class TokenResponse(BaseModel):
 # ---------------------------------------------------------------------------
 
 def create_access_token(data: dict) -> str:
-    """Create a signed JWT that expires in ACCESS_TOKEN_EXPIRE_DAYS days."""
     payload = data.copy()
     expire = datetime.utcnow() + timedelta(days=ACCESS_TOKEN_EXPIRE_DAYS)
     payload.update({"exp": expire})
@@ -68,10 +75,6 @@ def create_access_token(data: dict) -> str:
 
 
 def verify_token(token: str) -> dict:
-    """
-    Decode and verify a JWT.
-    Returns the payload dict, or raises HTTPException 401 on failure.
-    """
     try:
         payload = jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])
         return payload
@@ -87,7 +90,6 @@ def get_current_user(
     token: str = Depends(oauth2_scheme),
     db: Session = Depends(get_db),
 ) -> User:
-    """FastAPI dependency: validate JWT and return the User ORM object."""
     payload = verify_token(token)
     user_id: Optional[int] = payload.get("sub")
     if user_id is None:
@@ -112,8 +114,6 @@ def get_current_user(
 
 @router.post("/register", response_model=TokenResponse, status_code=status.HTTP_201_CREATED)
 def register(body: RegisterRequest, db: Session = Depends(get_db)):
-    """Register a new user and return an access token."""
-    # Check for existing email
     if db.query(User).filter(User.email == body.email).first():
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT,
@@ -132,9 +132,14 @@ def register(body: RegisterRequest, db: Session = Depends(get_db)):
 
 @router.post("/login", response_model=TokenResponse)
 def login(body: LoginRequest, db: Session = Depends(get_db)):
-    """Authenticate and return an access token."""
     user = db.query(User).filter(User.email == body.email).first()
-    if not user or not pwd_context.verify(body.password, user.hashed_password):
+    if not user or user.hashed_password == _GOOGLE_AUTH_SENTINEL:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Incorrect email or password.",
+            headers={"WWW-Authenticate": "Bearer"},
+        )
+    if not pwd_context.verify(body.password, user.hashed_password):
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Incorrect email or password.",
@@ -145,7 +150,43 @@ def login(body: LoginRequest, db: Session = Depends(get_db)):
     return TokenResponse(access_token=token, user=UserOut.model_validate(user))
 
 
+@router.post("/google", response_model=TokenResponse)
+async def google_auth(body: GoogleAuthRequest, db: Session = Depends(get_db)):
+    import httpx
+    try:
+        async with httpx.AsyncClient(timeout=10.0) as client:
+            resp = await client.get(
+                "https://www.googleapis.com/oauth2/v3/userinfo",
+                headers={"Authorization": f"Bearer {body.credential}"},
+            )
+            resp.raise_for_status()
+            idinfo = resp.json()
+    except Exception as exc:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail=f"Failed to verify Google token: {exc}",
+        )
+
+    email = idinfo.get("email", "")
+    if not email:
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="No email from Google.")
+    name = idinfo.get("name") or email.split("@")[0]
+
+    user = db.query(User).filter(User.email == email).first()
+    if not user:
+        user = User(
+            email=email,
+            name=name,
+            hashed_password=_GOOGLE_AUTH_SENTINEL,
+        )
+        db.add(user)
+        db.commit()
+        db.refresh(user)
+
+    token = create_access_token({"sub": str(user.id)})
+    return TokenResponse(access_token=token, user=UserOut.model_validate(user))
+
+
 @router.get("/me", response_model=UserOut)
 def get_me(current_user: User = Depends(get_current_user)):
-    """Return the currently authenticated user's profile."""
     return current_user

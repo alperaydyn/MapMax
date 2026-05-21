@@ -35,6 +35,14 @@ export function AuthProvider({ children }) {
     return data
   }, [])
 
+  const googleLogin = useCallback(async (credential) => {
+    const data = await api.googleAuth(credential)
+    localStorage.setItem('mapmax_token', data.access_token)
+    setToken(data.access_token)
+    setUser(data.user)
+    return data
+  }, [])
+
   const logout = useCallback(() => {
     localStorage.removeItem('mapmax_token')
     setToken(null)
@@ -42,7 +50,7 @@ export function AuthProvider({ children }) {
   }, [])
 
   return (
-    <AuthContext.Provider value={{ user, token, loading, login, register, logout }}>
+    <AuthContext.Provider value={{ user, token, loading, login, register, googleLogin, logout }}>
       {children}
     </AuthContext.Provider>
   )

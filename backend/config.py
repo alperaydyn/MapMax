@@ -5,6 +5,7 @@ load_dotenv()
 
 # Google APIs
 GOOGLE_MAPS_API_KEY: str = os.getenv("GOOGLE_MAPS_API_KEY", "")
+GOOGLE_CLIENT_ID: str = os.getenv("GOOGLE_CLIENT_ID", "")
 
 # OpenRouter / LLM
 OPENROUTER_API_KEY: str = os.getenv("OPENROUTER_API_KEY", "")

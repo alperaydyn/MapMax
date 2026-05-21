@@ -8,7 +8,7 @@ from typing import Optional
 
 import httpx
 
-from agent.tools.maps import get_directions, geocode
+from agent.tools.maps import get_directions, geocode, reverse_geocode
 from agent.tools.places import search_places, get_place_details, search_along_route as _search_along_route
 from agent.tools.weather import get_weather, get_weather_at_destination
 from agent.tools.memory import (
@@ -311,9 +311,9 @@ class MapAgent:
             lng = current_location.get("lng")
             addr = current_location.get("address", "")
             if lat and lng:
-                location_str = f"{lat:.5f}, {lng:.5f}"
+                location_str = f"{lat:.6f},{lng:.6f}"
                 if addr:
-                    location_str = f"{addr} ({lat:.5f}, {lng:.5f})"
+                    location_str = f"{addr} ({lat:.6f},{lng:.6f})"
 
         # Format bookmarks
         bookmark_lines = []
@@ -363,6 +363,8 @@ Learned location patterns:
 - Be concise but helpful. Distances in km/miles, durations in human-readable form.
 - If a tool call fails, tell the user clearly and suggest alternatives.
 - Always confirm actions (saved bookmark, started navigation) in your response.
+- IMPORTANT: When the user asks for something "near me", "nearby", "around me", or "close to me", always pass the exact string "current location" as the `location` parameter to search_places or get_directions. Never pass "near me" literally as a location — the system will automatically substitute the user's real GPS coordinates for "current location".
+- IMPORTANT: The user's current location coordinates above are their real GPS position. Use those coordinates directly (as "lat,lng") or use "current location" when calling tools.
 """
 
     # ------------------------------------------------------------------
@@ -388,8 +390,7 @@ Learned location patterns:
             if tool_name == "get_directions":
                 origin = tool_args.get("origin", "")
                 destination = tool_args.get("destination", "")
-                # Inject current location if origin is "current location" / "here"
-                if origin.lower() in ("current location", "here", "my location") and current_location:
+                if _is_near_me(origin) and current_location:
                     lat = current_location.get("lat")
                     lng = current_location.get("lng")
                     if lat and lng:
@@ -420,7 +421,12 @@ Learned location patterns:
 
             elif tool_name == "search_places":
                 location = tool_args.get("location", "")
-                if location.lower() in ("current location", "here", "my location", "nearby") and current_location:
+                if _is_near_me(location) and current_location:
+                    lat = current_location.get("lat")
+                    lng = current_location.get("lng")
+                    if lat and lng:
+                        location = f"{lat},{lng}"
+                elif not location and current_location:
                     lat = current_location.get("lat")
                     lng = current_location.get("lng")
                     if lat and lng:
@@ -450,10 +456,9 @@ Learned location patterns:
                 return result, map_action
 
             elif tool_name == "search_along_route":
-                # Get directions first to get the polyline
                 origin = tool_args.get("origin", "")
                 destination = tool_args.get("destination", "")
-                if origin.lower() in ("current location", "here", "my location") and current_location:
+                if _is_near_me(origin) and current_location:
                     lat = current_location.get("lat")
                     lng = current_location.get("lng")
                     if lat and lng:
@@ -627,9 +632,22 @@ Learned location patterns:
         bookmarks = await asyncio.to_thread(get_bookmarks, db, user_id)
         insights = await asyncio.to_thread(get_location_insights, db, user_id)
 
+        # Enrich current_location with a reverse-geocoded address if missing
+        enriched_location = dict(current_location) if current_location else {}
+        if enriched_location and not enriched_location.get("address"):
+            lat = enriched_location.get("lat")
+            lng = enriched_location.get("lng")
+            if lat and lng:
+                try:
+                    rev = await reverse_geocode(lat, lng)
+                    if "error" not in rev:
+                        enriched_location["address"] = rev.get("formatted_address", "")
+                except Exception:
+                    pass
+
         system_prompt = self.build_system_prompt(
             user_name=user_name,
-            current_location=current_location,
+            current_location=enriched_location,
             bookmarks=bookmarks,
             insights=insights,
         )
@@ -736,6 +754,17 @@ Learned location patterns:
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
+
+_NEAR_ME_PHRASES = {
+    "current location", "here", "my location", "nearby", "near me",
+    "around me", "close to me", "current position", "where i am",
+    "my current location", "my position", "near my location",
+}
+
+
+def _is_near_me(location_str: str) -> bool:
+    return location_str.strip().lower() in _NEAR_ME_PHRASES
+
 
 def _parse_latlng(s: str) -> tuple[Optional[float], Optional[float]]:
     """Parse 'lat,lng' string. Returns (None, None) if not a valid pair."""

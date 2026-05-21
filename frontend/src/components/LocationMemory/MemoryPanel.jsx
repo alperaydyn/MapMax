@@ -23,51 +23,73 @@ export default function MemoryPanel({ onLocationSelect, collapsed, onToggle, ref
   const { token } = useAuth()
   const [insights, setInsights] = useState([])
   const [bookmarks, setBookmarks] = useState([])
+  const [preferences, setPreferences] = useState([])
   const [tab, setTab] = useState('insights')
   const [loading, setLoading] = useState(true)
 
   const reload = async () => {
     setLoading(true)
     try {
-      const [ins, bks] = await Promise.all([api.getInsights(token), api.getBookmarks(token)])
+      const [ins, bks, prefs] = await Promise.all([
+        api.getInsights(token),
+        api.getBookmarks(token),
+        api.getPreferences(token),
+      ])
       setInsights(ins.insights || [])
       setBookmarks(bks.bookmarks || [])
+      setPreferences(prefs.preferences || [])
     } catch {}
     setLoading(false)
   }
 
-  // Reload when token changes OR when parent signals new data (e.g. after agent saves a bookmark)
   useEffect(() => { reload() }, [token, refreshKey])
+
+  const handleDeletePreference = async (id) => {
+    try {
+      await api.deletePreference(token, id)
+      setPreferences(prev => prev.filter(p => p.id !== id))
+    } catch {}
+  }
+
+  const totalCount = insights.length + bookmarks.length + preferences.length
 
   if (collapsed) {
     return (
       <button onClick={onToggle} className="glass rounded-2xl p-3 flex flex-col items-center gap-1 shadow-lg cursor-pointer hover:bg-black/5 transition-all">
         <span className="text-xl">🧠</span>
-        <span className="text-slate-500 text-[10px]">Memory</span>
-        {(insights.length + bookmarks.length) > 0 && (
+        <span className="text-slate-500 text-[10px]">Hafıza</span>
+        {totalCount > 0 && (
           <span className="bg-brand text-white text-[9px] rounded-full px-1.5 py-0.5 leading-none">
-            {insights.length + bookmarks.length}
+            {totalCount}
           </span>
         )}
       </button>
     )
   }
 
+  const tabs = [
+    ['insights', '💡 İçgörüler'],
+    ['bookmarks', '🔖 Yerler'],
+    ['preferences', '⚙️ Tercihler'],
+  ]
+
   return (
     <div className="panel flex flex-col h-full w-72 max-h-[calc(100vh-2rem)] animate-fade-in">
+      {/* Header */}
       <div className="flex items-center justify-between px-4 py-3 border-b border-slate-100">
         <div className="flex items-center gap-2">
           <span className="text-lg">🧠</span>
-          <span className="text-sm font-semibold text-slate-800">Location Memory</span>
+          <span className="text-sm font-semibold text-slate-800">Konum Hafızası</span>
         </div>
         <div className="flex items-center gap-1">
-          <button onClick={reload} title="Refresh" className="w-7 h-7 rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-500 flex items-center justify-center text-sm transition-all">↻</button>
+          <button onClick={reload} title="Yenile" className="w-7 h-7 rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-500 flex items-center justify-center text-sm transition-all">↻</button>
           <button onClick={onToggle} className="w-7 h-7 rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-500 flex items-center justify-center transition-all">✕</button>
         </div>
       </div>
 
+      {/* Tabs */}
       <div className="flex gap-1 p-2 border-b border-slate-100">
-        {[['insights', '💡 Insights'], ['bookmarks', '🔖 Saved']].map(([key, label]) => (
+        {tabs.map(([key, label]) => (
           <button
             key={key}
             onClick={() => setTab(key)}
@@ -79,6 +101,7 @@ export default function MemoryPanel({ onLocationSelect, collapsed, onToggle, ref
         ))}
       </div>
 
+      {/* Content */}
       <div className="flex-1 overflow-y-auto p-3 space-y-2 min-h-0 bg-slate-50/50">
         {loading ? (
           <div className="flex justify-center py-8">
@@ -90,8 +113,8 @@ export default function MemoryPanel({ onLocationSelect, collapsed, onToggle, ref
           insights.length === 0 ? (
             <div className="text-center py-8">
               <div className="text-3xl mb-2">🗺️</div>
-              <div className="text-slate-500 text-sm">No patterns learned yet</div>
-              <div className="text-slate-400 text-xs mt-1">Use the app to let MapMax learn your routine</div>
+              <div className="text-slate-500 text-sm">Henüz örüntü öğrenilmedi</div>
+              <div className="text-slate-400 text-xs mt-1">Uygulamayı kullandıkça MapMax rutininizi öğrenir</div>
             </div>
           ) : insights.map(ins => (
             <button key={ins.id}
@@ -111,12 +134,12 @@ export default function MemoryPanel({ onLocationSelect, collapsed, onToggle, ref
               </div>
             </button>
           ))
-        ) : (
+        ) : tab === 'bookmarks' ? (
           bookmarks.length === 0 ? (
             <div className="text-center py-8">
               <div className="text-3xl mb-2">🔖</div>
-              <div className="text-slate-500 text-sm">No saved places yet</div>
-              <div className="text-slate-400 text-xs mt-1">Say "bookmark this place as Home"</div>
+              <div className="text-slate-500 text-sm">Henüz kaydedilen yer yok</div>
+              <div className="text-slate-400 text-xs mt-1">"Bu yeri Ev olarak kaydet" diyebilirsiniz</div>
             </div>
           ) : bookmarks.map(bk => (
             <button key={bk.id}
@@ -127,13 +150,39 @@ export default function MemoryPanel({ onLocationSelect, collapsed, onToggle, ref
                 <span className="text-xl flex-shrink-0">{CATEGORY_ICONS[bk.category] || '📍'}</span>
                 <div className="flex-1 min-w-0">
                   <div className="text-slate-800 text-sm font-medium truncate">{bk.name}</div>
-                  <div className="text-slate-400 text-xs truncate mt-0.5">{bk.address || 'No address'}</div>
+                  <div className="text-slate-400 text-xs truncate mt-0.5">{bk.address || 'Adres yok'}</div>
                   {bk.visit_count > 0 && (
-                    <div className="text-slate-300 text-xs mt-1">{bk.visit_count} visits</div>
+                    <div className="text-slate-300 text-xs mt-1">{bk.visit_count} ziyaret</div>
                   )}
                 </div>
               </div>
             </button>
+          ))
+        ) : (
+          /* Preferences tab */
+          preferences.length === 0 ? (
+            <div className="text-center py-8">
+              <div className="text-3xl mb-2">⚙️</div>
+              <div className="text-slate-500 text-sm">Henüz tercih kaydedilmedi</div>
+              <div className="text-slate-400 text-xs mt-1 leading-relaxed">
+                Asistana tercihlerinizi söyleyin,<br />otomatik olarak hatırlayacak
+              </div>
+            </div>
+          ) : preferences.map(pref => (
+            <div key={pref.id}
+              className="bg-white border border-slate-100 rounded-xl p-3 flex items-start gap-2.5 group"
+            >
+              <span className="text-xl flex-shrink-0 mt-0.5">⚙️</span>
+              <div className="flex-1 min-w-0">
+                <div className="text-slate-800 text-sm font-medium leading-snug">{pref.display_text}</div>
+                <div className="text-slate-400 text-[10px] mt-1 uppercase tracking-wide">{pref.category.replace(/_/g, ' ')}</div>
+              </div>
+              <button
+                onClick={() => handleDeletePreference(pref.id)}
+                title="Tercihi sil"
+                className="opacity-0 group-hover:opacity-100 w-6 h-6 flex-shrink-0 flex items-center justify-center rounded-lg text-slate-300 hover:text-red-400 hover:bg-red-50 transition-all text-sm mt-0.5"
+              >✕</button>
+            </div>
           ))
         )}
       </div>

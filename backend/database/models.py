@@ -20,6 +20,7 @@ class User(Base):
     bookmarks = relationship("Bookmark", back_populates="user", cascade="all, delete-orphan")
     insights = relationship("LocationInsight", back_populates="user", cascade="all, delete-orphan")
     agent_messages = relationship("AgentMessage", back_populates="user", cascade="all, delete-orphan")
+    preferences = relationship("UserPreference", back_populates="user", cascade="all, delete-orphan")
 
 
 class LocationHistory(Base):
@@ -31,7 +32,6 @@ class LocationHistory(Base):
     longitude = Column(Float, nullable=False)
     place_id = Column(String, nullable=True)
     place_name = Column(String, nullable=True)
-    # Stored as JSON string, e.g. '["restaurant", "food"]'
     place_types = Column(Text, nullable=True)
     address = Column(String, nullable=True)
     arrived_at = Column(DateTime, default=datetime.utcnow)
@@ -64,14 +64,12 @@ class LocationInsight(Base):
 
     id = Column(Integer, primary_key=True, index=True)
     user_id = Column(Integer, ForeignKey("users.id"), nullable=False, index=True)
-    # Type: home / work / school / gym / frequent
     insight_type = Column(String, nullable=False)
     latitude = Column(Float, nullable=False)
     longitude = Column(Float, nullable=False)
     place_name = Column(String, nullable=True)
     address = Column(String, nullable=True)
     confidence = Column(Float, default=0.0)
-    # JSON string with supporting evidence details
     evidence = Column(Text, nullable=True)
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
 
@@ -83,9 +81,26 @@ class AgentMessage(Base):
 
     id = Column(Integer, primary_key=True, index=True)
     user_id = Column(Integer, ForeignKey("users.id"), nullable=False, index=True)
-    # role: "user" or "assistant"
     role = Column(String, nullable=False)
     content = Column(Text, nullable=False)
     created_at = Column(DateTime, default=datetime.utcnow)
 
     user = relationship("User", back_populates="agent_messages")
+
+
+class UserPreference(Base):
+    """Persistent user preferences extracted silently from conversation."""
+    __tablename__ = "user_preferences"
+
+    id = Column(Integer, primary_key=True, index=True)
+    user_id = Column(Integer, ForeignKey("users.id"), nullable=False, index=True)
+    # snake_case type key — same category overwrites previous value (upsert)
+    category = Column(String, nullable=False)
+    # Human-readable summary in the user's language
+    display_text = Column(String, nullable=False)
+    # Optional raw / structured value for filtering (comma-separated list etc.)
+    raw_value = Column(Text, nullable=True)
+    created_at = Column(DateTime, default=datetime.utcnow)
+    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+    user = relationship("User", back_populates="preferences")

@@ -81,6 +81,9 @@ export default function MapApp() {
         setRoute(null)
         setPlaces([])
         break
+      case 'update_preferences':
+        setMemoryRefreshKey(k => k + 1)
+        break
     }
   }, [token])
 

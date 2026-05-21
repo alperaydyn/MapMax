@@ -20,6 +20,8 @@ from agent.tools.memory import (
     update_bookmark as _update_bookmark,
     delete_bookmark as _delete_bookmark,
     get_location_insights as _get_location_insights,
+    get_preferences as _get_preferences,
+    delete_preference as _delete_preference,
     log_location_visit,
 )
 from services.location_intelligence import analyze_user_patterns
@@ -235,3 +237,29 @@ async def get_history(
 
     history = await asyncio.to_thread(_fetch)
     return {"history": history, "count": len(history)}
+
+
+# ---------------------------------------------------------------------------
+# Preferences
+# ---------------------------------------------------------------------------
+
+@router.get("/preferences")
+async def get_preferences(
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    prefs = await asyncio.to_thread(_get_preferences, db, current_user.id)
+    return {"preferences": prefs, "count": len(prefs)}
+
+
+@router.delete("/preferences/{preference_id}", status_code=status.HTTP_204_NO_CONTENT)
+async def delete_preference_endpoint(
+    preference_id: int,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    success = await asyncio.to_thread(
+        _delete_preference, db, current_user.id, preference_id, None
+    )
+    if not success:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Preference not found")

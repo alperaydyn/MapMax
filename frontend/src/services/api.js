@@ -39,6 +39,11 @@ export const api = {
 
   getInsights: (token) => request('/locations/insights', {}, token),
 
+  getPreferences: (token) => request('/locations/preferences', {}, token),
+
+  deletePreference: (token, id) =>
+    request(`/locations/preferences/${id}`, { method: 'DELETE' }, token),
+
   getHistory: (token, limit = 50) => request(`/locations/history?limit=${limit}`, {}, token),
 }
 

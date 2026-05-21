@@ -6,7 +6,7 @@ import json
 from datetime import datetime
 from typing import Optional
 
-from database.models import Bookmark, LocationHistory, LocationInsight
+from database.models import Bookmark, LocationHistory, LocationInsight, UserPreference
 
 
 # ---------------------------------------------------------------------------
@@ -191,6 +191,81 @@ def resolve_named_location(db, user_id: int, name: str) -> Optional[dict]:
 
 
 # ---------------------------------------------------------------------------
+# User preferences
+# ---------------------------------------------------------------------------
+
+def get_preferences(db, user_id: int) -> list:
+    """Return all saved preferences for the user, newest first."""
+    prefs = (
+        db.query(UserPreference)
+        .filter(UserPreference.user_id == user_id)
+        .order_by(UserPreference.updated_at.desc())
+        .all()
+    )
+    return [_preference_to_dict(p) for p in prefs]
+
+
+def save_preference(
+    db,
+    user_id: int,
+    category: str,
+    display_text: str,
+    raw_value: str = None,
+) -> dict:
+    """
+    Upsert a preference by category.
+    If a preference with the same category exists it is updated in place;
+    otherwise a new row is created.
+    """
+    existing = (
+        db.query(UserPreference)
+        .filter(UserPreference.user_id == user_id, UserPreference.category == category)
+        .first()
+    )
+    if existing:
+        existing.display_text = display_text
+        if raw_value is not None:
+            existing.raw_value = raw_value
+        existing.updated_at = datetime.utcnow()
+        db.commit()
+        db.refresh(existing)
+        return {"id": existing.id, "updated": True}
+
+    pref = UserPreference(
+        user_id=user_id,
+        category=category,
+        display_text=display_text,
+        raw_value=raw_value,
+    )
+    db.add(pref)
+    db.commit()
+    db.refresh(pref)
+    return {"id": pref.id, "created": True}
+
+
+def delete_preference(
+    db,
+    user_id: int,
+    preference_id: int = None,
+    category: str = None,
+) -> bool:
+    """Delete a preference by id or category. Returns True on success."""
+    q = db.query(UserPreference).filter(UserPreference.user_id == user_id)
+    if preference_id is not None:
+        q = q.filter(UserPreference.id == preference_id)
+    elif category:
+        q = q.filter(UserPreference.category == category)
+    else:
+        return False
+    pref = q.first()
+    if not pref:
+        return False
+    db.delete(pref)
+    db.commit()
+    return True
+
+
+# ---------------------------------------------------------------------------
 # Location visit logging
 # ---------------------------------------------------------------------------
 
@@ -319,6 +394,16 @@ def _history_to_dict(h: LocationHistory) -> dict:
         "arrived_at": h.arrived_at.isoformat() if h.arrived_at else None,
         "departed_at": h.departed_at.isoformat() if h.departed_at else None,
         "duration_minutes": h.duration_minutes,
+    }
+
+
+def _preference_to_dict(p: UserPreference) -> dict:
+    return {
+        "id": p.id,
+        "category": p.category,
+        "display_text": p.display_text,
+        "raw_value": p.raw_value,
+        "updated_at": p.updated_at.isoformat() if p.updated_at else None,
     }
 
 

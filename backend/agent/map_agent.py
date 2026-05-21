@@ -18,6 +18,9 @@ from agent.tools.memory import (
     delete_bookmark,
     get_location_insights,
     resolve_named_location,
+    get_preferences,
+    save_preference as _save_preference,
+    delete_preference as _delete_preference,
 )
 
 
@@ -306,6 +309,63 @@ class MapAgent:
                     },
                 },
             },
+            {
+                "type": "function",
+                "function": {
+                    "name": "save_preference",
+                    "description": (
+                        "Silently save or update a lasting user preference extracted from the conversation. "
+                        "Call this whenever the user states a durable personal preference, habit, or constraint — "
+                        "e.g. 'I only use Tesla, ZES, Trugo chargers', 'I'm vegetarian', 'I drive an EV', "
+                        "'I prefer toll-free routes', 'I always use the ferry'. "
+                        "Do NOT call this for one-time requests ('navigate to X', 'show me restaurants'). "
+                        "Using the same category overwrites the previous preference of that type."
+                    ),
+                    "parameters": {
+                        "type": "object",
+                        "properties": {
+                            "category": {
+                                "type": "string",
+                                "description": (
+                                    "Snake_case preference type. "
+                                    "Examples: 'charging_station', 'food_type', 'vehicle', "
+                                    "'route_preference', 'parking', 'travel_mode'."
+                                ),
+                            },
+                            "display_text": {
+                                "type": "string",
+                                "description": (
+                                    "Concise human-readable summary in the user's language. "
+                                    "Examples: 'Şarj istasyon tercihi: Tesla, ZES, Trugo', "
+                                    "'Yemek tercihi: vejetaryen', 'Araç: elektrikli'."
+                                ),
+                            },
+                            "raw_value": {
+                                "type": "string",
+                                "description": "Optional comma-separated list or machine-readable value.",
+                            },
+                        },
+                        "required": ["category", "display_text"],
+                    },
+                },
+            },
+            {
+                "type": "function",
+                "function": {
+                    "name": "delete_preference",
+                    "description": "Remove a saved user preference by category.",
+                    "parameters": {
+                        "type": "object",
+                        "properties": {
+                            "category": {
+                                "type": "string",
+                                "description": "The category key to delete.",
+                            },
+                        },
+                        "required": ["category"],
+                    },
+                },
+            },
         ]
 
     # ------------------------------------------------------------------
@@ -318,6 +378,7 @@ class MapAgent:
         current_location: dict,
         bookmarks: list,
         insights: list,
+        preferences: list,
     ) -> str:
         now = datetime.now().strftime("%A, %B %d, %Y at %I:%M %p")
 
@@ -331,28 +392,26 @@ class MapAgent:
                 if addr:
                     location_str = f"{addr} ({lat:.6f},{lng:.6f})"
 
-        # Format bookmarks
         bookmark_lines = []
         for b in bookmarks:
             addr = b.get("address") or "{}, {}".format(b["lat"], b["lng"])
-            bookmark_lines.append(
-                f"  - {b['name']} ({b.get('category', 'favorite')}): {addr}"
-            )
+            bookmark_lines.append(f"  - {b['name']} ({b.get('category', 'favorite')}): {addr}")
         bookmarks_str = "\n".join(bookmark_lines) if bookmark_lines else "  None saved yet."
 
-        # Format insights
         insight_lines = []
         for ins in insights:
             ins_addr = ins.get("address") or "{}, {}".format(ins["lat"], ins["lng"])
             insight_lines.append(
                 f"  - {ins['insight_type'].capitalize()}: "
-                f"{ins.get('place_name') or 'Unknown'} "
-                f"({ins_addr}), "
+                f"{ins.get('place_name') or 'Unknown'} ({ins_addr}), "
                 f"confidence: {ins['confidence']:.0%}"
             )
         insights_str = "\n".join(insight_lines) if insight_lines else "  No patterns detected yet."
 
-        return f"""You are MapMax, a friendly and helpful AI map assistant.
+        pref_lines = [f"  - {p['display_text']}" for p in preferences]
+        preferences_str = "\n".join(pref_lines) if pref_lines else "  None saved yet."
+
+        return f"""You are MapMax, a concise and helpful AI map assistant.
 
 Current time: {now}
 User name: {user_name}
@@ -364,23 +423,27 @@ User's saved bookmarks:
 Learned location patterns:
 {insights_str}
 
-## Your capabilities
-- Get turn-by-turn directions (driving, walking, transit, cycling)
-- Search for nearby places (restaurants, gas stations, ATMs, etc.)
-- Find places along a route
-- Get current and forecast weather
-- Save, update, and delete location bookmarks
-- Recall learned patterns (home, work, gym, etc.)
-- Resolve named locations like "home" or "work" to real coordinates
+User preferences (silent context — apply automatically, never comment on them unprompted):
+{preferences_str}
 
-## Guidelines
-- When a user mentions a named place ("home", "work", "gym"), call resolve_location first.
-- For route queries, always call get_directions and return the map action.
-- Be concise but helpful. Distances in km/miles, durations in human-readable form.
-- If a tool call fails, tell the user clearly and suggest alternatives.
-- Always confirm actions (saved bookmark, started navigation) in your response.
-- IMPORTANT: When the user asks for something "near me", "nearby", "around me", or "close to me", always pass the exact string "current location" as the `location` parameter to search_places or get_directions. Never pass "near me" literally as a location — the system will automatically substitute the user's real GPS coordinates for "current location".
-- IMPORTANT: The user's current location coordinates above are their real GPS position. Use those coordinates directly (as "lat,lng") or use "current location" when calling tools.
+## Capabilities
+- Turn-by-turn directions (driving, walking, transit, cycling)
+- Nearby place search and place details
+- Places along a route
+- Current and forecast weather
+- Save, update, delete bookmarks
+- Save, update, delete user preferences
+- Clear the map
+
+## Behavior rules
+- Be concise. Answer the question, don't add unnecessary commentary.
+- When a named place ("home", "work", "gym") is mentioned, call resolve_location first.
+- For route queries, always call get_directions.
+- For "near me" / "yakınımda" / "nearby": pass "current location" as the location parameter — never pass the phrase literally.
+- The GPS coordinates above are the user's real position. Use them directly or via "current location".
+- User preferences are silent background context. Apply them when acting (e.g. filter to preferred charging networks) WITHOUT announcing you are doing so. Never say "I see you prefer X" or "According to your preferences...". Only discuss preferences if the user explicitly asks.
+- Call save_preference silently when the user states a durable personal preference or habit. Do not tell the user you saved it — just act on it naturally.
+- Confirm only actions that change visible state: navigation started, bookmark saved, map cleared.
 """
 
     # ------------------------------------------------------------------
@@ -620,6 +683,25 @@ Learned location patterns:
             elif tool_name == "clear_map":
                 return {"success": True, "message": "Map cleared"}, {"type": "clear_map"}
 
+            elif tool_name == "save_preference":
+                import asyncio
+                result = await asyncio.to_thread(
+                    _save_preference,
+                    db,
+                    user_id,
+                    tool_args.get("category", ""),
+                    tool_args.get("display_text", ""),
+                    tool_args.get("raw_value"),
+                )
+                return result, {"type": "update_preferences"}
+
+            elif tool_name == "delete_preference":
+                import asyncio
+                success = await asyncio.to_thread(
+                    _delete_preference, db, user_id, None, tool_args.get("category", "")
+                )
+                return {"success": success}, {"type": "update_preferences"}
+
             else:
                 return {"error": f"Unknown tool: {tool_name}"}, None
 
@@ -647,9 +729,12 @@ Learned location patterns:
         """
         import asyncio
 
-        # Load user context
-        bookmarks = await asyncio.to_thread(get_bookmarks, db, user_id)
-        insights = await asyncio.to_thread(get_location_insights, db, user_id)
+        # Load user context in parallel
+        bookmarks, insights, preferences = await asyncio.gather(
+            asyncio.to_thread(get_bookmarks, db, user_id),
+            asyncio.to_thread(get_location_insights, db, user_id),
+            asyncio.to_thread(get_preferences, db, user_id),
+        )
 
         # Enrich current_location with a reverse-geocoded address if missing
         enriched_location = dict(current_location) if current_location else {}
@@ -669,6 +754,7 @@ Learned location patterns:
             current_location=enriched_location,
             bookmarks=bookmarks,
             insights=insights,
+            preferences=preferences,
         )
 
         # Build message list: keep last 20 messages for context

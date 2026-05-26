@@ -310,7 +310,16 @@ function RouteInfo({ route, onSaveRoute }) {
 
 export default function MapView({ currentLocation, route, places, insights, bookmarks, onMapClick, onSaveRoute }) {
   const [mapInstance, setMapInstance] = useState(null)
-  const defaultCenter = currentLocation || { lat: 41.015137, lng: 28.979530 }
+  const hasCenteredRef = useRef(false)
+
+  // Pan to user's location once on first fix
+  useEffect(() => {
+    if (mapInstance && currentLocation && !hasCenteredRef.current) {
+      mapInstance.panTo({ lat: currentLocation.lat, lng: currentLocation.lng })
+      mapInstance.setZoom(15)
+      hasCenteredRef.current = true
+    }
+  }, [mapInstance, currentLocation])
 
   const handleLocate = useCallback(() => {
     if (mapInstance && currentLocation) {
